@@ -5,8 +5,8 @@ from pathlib import Path
 
 def extract_energy_from_filename(filename):
     """
-    从文件名中提取能量值
-    例如：POSCAR_opt_-0.23305eV.vasp -> -0.23305
+    Extract energy value from the filename
+    Example: POSCAR_opt_-0.23305eV.vasp -> -0.23305
     """
     pattern = r'POSCAR_opt_([+-]?\d+\.?\d*)eV\.vasp'
     match = re.search(pattern, filename)
@@ -14,41 +14,42 @@ def extract_energy_from_filename(filename):
         return float(match.group(1))
     return None
 
+
 def scan_directory_structure(base_path):
     """
-    扫描目录结构并提取能量数据
+    Scan the directory structure and extract energy data
     """
     data = []
     base_path = Path(base_path)
     
-    # 找到所有Slab_开头的文件夹
+    # Find all folders starting with 'Slab_'
     slab_folders = [f for f in base_path.iterdir() if f.is_dir() and f.name.startswith('Slab_')]
     
     for slab_folder in slab_folders:
         slab_name = slab_folder.name
-        adsorbate = slab_name.replace('Slab_', '')  # 获取吸附物种类型
+        adsorbate = slab_name.replace('Slab_', '')  # Get adsorbate species
         
-        print(f"处理 {slab_name}...")
+        print(f"Processing {slab_name}...")
         
-        # 在每个Slab文件夹下找到Ag3Pt_mp开头的文件夹
+        # Find folders starting with Ag3Pt_mp under each Slab folder
         ag3pt_folders = [f for f in slab_folder.iterdir() if f.is_dir() and f.name.startswith('Ag3')]
         
         for ag3pt_folder in ag3pt_folders:
-            # 在Ag3Pt文件夹下找到所有位点文件夹（如CO_01, CO_02等）
+            # Find all site folders under Ag3Pt (e.g., CO_01, CO_02)
             site_folders = [f for f in ag3pt_folder.iterdir() if f.is_dir() and '_' in f.name]
             
             for site_folder in site_folders:
-                site_name = site_folder.name.split('_')[-1]  # 获取位点编号，如01, 02, 03
+                site_name = site_folder.name.split('_')[-1]  # Extract site index (e.g., 01, 02, 03)
                 
-                # 查找POSCAR文件
+                # Search for POSCAR files
                 poscar_files = list(site_folder.glob('POSCAR_opt_*eV.vasp'))
                 
                 if poscar_files:
-                    poscar_file = poscar_files[0]  # 取第一个匹配的文件
+                    poscar_file = poscar_files[0]  # Take the first matching file
                     energy = extract_energy_from_filename(poscar_file.name)
                     
                     if energy is not None:
-                        # 检查是否已经存在相同slab和位点的记录
+                        # Check whether a record with the same slab and site already exists
                         existing_row = None
                         for row in data:
                             if row['Slab'] == ag3pt_folder.name and row['Site'] == site_name:
@@ -56,7 +57,7 @@ def scan_directory_structure(base_path):
                                 break
                         
                         if existing_row is None:
-                            # 创建新记录
+                            # Create a new record
                             new_row = {
                                 'Slab': ag3pt_folder.name,
                                 'Site': site_name,
@@ -68,7 +69,7 @@ def scan_directory_structure(base_path):
                             data.append(new_row)
                             existing_row = new_row
                         
-                        # 根据吸附物类型填入相应列
+                        # Fill the corresponding column according to adsorbate type
                         if adsorbate == 'OCHO':
                             existing_row['OCHO_eV'] = energy
                         elif adsorbate == 'COOH':
@@ -78,66 +79,69 @@ def scan_directory_structure(base_path):
                         elif adsorbate == 'COCO':
                             existing_row['COCO_eV'] = energy
                 
-                print(f"  处理位点: {site_folder.name}, 吸附物: {adsorbate}")
+                print(f"  Processing site: {site_folder.name}, adsorbate: {adsorbate}")
     
     return data
 
+
 def create_energy_table(base_path, output_file='energy_table.csv'):
     """
-    创建能量表格
+    Create the energy table
     """
-    print("开始扫描目录结构...")
+    print("Starting directory scan...")
     data = scan_directory_structure(base_path)
     
     if not data:
-        print("未找到任何数据！")
+        print("No data found!")
         return None
     
-    # 转换为DataFrame并排序
+    # Convert to DataFrame and sort
     df = pd.DataFrame(data)
     df = df.sort_values(['Slab', 'Site']).reset_index(drop=True)
     
-    # 保存到CSV文件
+    # Save to CSV file
     df.to_csv(output_file, index=False, float_format='%.5f')
     
-    print(f"\n数据已保存到 {output_file}")
-    print(f"共处理 {len(df)} 条记录")
-    print("\n数据预览:")
+    print(f"\nData saved to {output_file}")
+    print(f"Total records processed: {len(df)}")
+    print("\nData preview:")
     print(df.head(10))
     
     return df
 
+
 def main():
-    # 设置基础路径（请根据实际情况修改）
-    base_path = "."  # 当前目录，您可以修改为实际路径
+    # Set base path (modify according to your actual situation)
+    base_path = "."  # Current directory; you may change this to the actual path
     
-    # 如果您想指定特定路径，请取消注释并修改下面的行：
+    # If you want to specify a specific path, uncomment and modify the line below:
     # base_path = "/path/to/your/PDS_OPT_GPU"
     
     try:
         df = create_energy_table(base_path)
         
         if df is not None:
-            # 显示统计信息
-            print(f"\n统计信息:")
-            print(f"不同Slab数量: {df['Slab'].nunique()}")
-            print(f"不同位点数量: {df['Site'].nunique()}")
-            print(f"OCHO数据点: {df['OCHO_eV'].notna().sum()}")
-            print(f"COOH数据点: {df['COOH_eV'].notna().sum()}")
-            print(f"CO数据点: {df['CO_eV'].notna().sum()}")
-            print(f"COCO数据点: {df['COCO_eV'].notna().sum()}")
+            # Display statistics
+            print(f"\nStatistics:")
+            print(f"Number of different slabs: {df['Slab'].nunique()}")
+            print(f"Number of different sites: {df['Site'].nunique()}")
+            print(f"OCHO data points: {df['OCHO_eV'].notna().sum()}")
+            print(f"COOH data points: {df['COOH_eV'].notna().sum()}")
+            print(f"CO data points: {df['CO_eV'].notna().sum()}")
+            print(f"COCO data points: {df['COCO_eV'].notna().sum()}")
             
-            # 检查缺失数据
+            # Check missing data
             missing_data = df.isnull().sum()
             if missing_data.sum() > 0:
-                print(f"\n缺失数据统计:")
+                print(f"\nMissing data statistics:")
                 for col, missing_count in missing_data.items():
                     if missing_count > 0:
-                        print(f"{col}: {missing_count} 个缺失值")
+                        print(f"{col}: {missing_count} missing values")
     
     except Exception as e:
-        print(f"处理过程中出现错误: {e}")
-        print("请检查文件路径和目录结构是否正确")
+        print(f"An error occurred during processing: {e}")
+        print("Please check whether the file path and directory structure are correct")
+
 
 if __name__ == "__main__":
     main()
