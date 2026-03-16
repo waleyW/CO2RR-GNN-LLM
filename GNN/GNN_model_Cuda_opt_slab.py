@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-批量Slab优化（无分批版）
-支持多个父文件夹，用户可指定使用POSCAR或CONTCAR
-例：
+Batch slab optimization (non-batch-splitting version).
+Supports multiple parent folders, and the user can specify whether to use POSCAR or CONTCAR.
+
+Example:
 python slab_opt_all.py \
-  --input-folders /path/SlabSet1 /path/SlabSet2 \
-  --out-folder /path/Optimized \
-  --model /path/gemnet_t_direct_h512_all.pt \
+  --input-folders /path/to/SlabSet1 /path/to/SlabSet2 \
+  --out-folder /path/to/Optimized \
+  --model /path/to/gemnet_t_direct_h512_all.pt \
   --file-type POSCAR
 """
 
@@ -25,22 +26,22 @@ from ase.optimize import BFGS
 import pandas as pd
 from tqdm import tqdm
 
-# ========== 初始化OCP ==========
-os.environ['OCP_ROOT'] = '/nesi/nobackup/uoa04335/WXY/Software/ocp'
-sys.path.insert(0, '/nesi/nobackup/uoa04335/WXY/Software/ocp')
+# ========== Initialize OCP ==========
+os.environ['OCP_ROOT'] = '/path/to/ocp'
+sys.path.insert(0, '/path/to/ocp')
 
-print("正在初始化OCP模块...")
+print("Initializing OCP modules...")
 from ocpmodels.common.registry import registry
 from ocpmodels.common.utils import setup_imports
 setup_imports()
 import ocpmodels.models, ocpmodels.trainers, ocpmodels.datasets, ocpmodels.tasks
 from ocpmodels.common.relaxation.ase_utils import OCPCalculator
-print(f"✓ 注册完成: {len(registry.mapping.get('trainer', {}))} trainers, {len(registry.mapping.get('model', {}))} models")
+print(f"✓ Registration completed: {len(registry.mapping.get('trainer', {}))} trainers, {len(registry.mapping.get('model', {}))} models")
 
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
-# ========== 工具函数 ==========
+# ========== Utility functions ==========
 def setup_logging(output_dir):
     log_dir = Path(output_dir) / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -52,18 +53,19 @@ def setup_logging(output_dir):
         handlers=[logging.FileHandler(log_file), logging.StreamHandler()]
     )
     logger = logging.getLogger(__name__)
-    logger.info(f"日志文件: {log_file}")
+    logger.info(f"Log file: {log_file}")
     return logger
 
 def find_structure_files(input_folders, file_type):
     """
-    递归查找多个父目录下指定类型文件 (POSCAR或CONTCAR)
+    Recursively search for the specified file type (POSCAR or CONTCAR)
+    under multiple parent directories.
     """
     all_files = []
     for folder in input_folders:
         folder = Path(folder)
         if not folder.exists():
-            print(f"⚠️ 跳过不存在的文件夹: {folder}")
+            print(f"⚠️ Skipping non-existent folder: {folder}")
             continue
         for root, _, files in os.walk(folder):
             if file_type.lower() in [f.lower() for f in files]:
@@ -80,34 +82,34 @@ def format_time(seconds):
         minutes = (seconds % 3600) // 60
         return f"{hours:.0f}h {minutes:.0f}m"
 
-# ========== 主函数 ==========
+# ========== Main function ==========
 def main():
-    parser = argparse.ArgumentParser(description='OCP + GemNet-T Slab批量优化')
-    parser.add_argument('--input-folders', nargs='+', required=True, help='多个输入父目录')
-    parser.add_argument('--out-folder', required=True, help='输出目录')
-    parser.add_argument('--model', required=True, help='GemNet-T模型路径')
-    parser.add_argument('--file-type', choices=['POSCAR', 'CONTCAR'], default='POSCAR', help='指定读取文件类型')
-    parser.add_argument('--fmax', type=float, default=0.05, help='收敛标准')
-    parser.add_argument('--steps', type=int, default=200, help='最大步数')
+    parser = argparse.ArgumentParser(description='OCP + GemNet-T slab batch optimization')
+    parser.add_argument('--input-folders', nargs='+', required=True, help='Multiple input parent directories')
+    parser.add_argument('--out-folder', required=True, help='Output directory')
+    parser.add_argument('--model', required=True, help='Path to the GemNet-T model')
+    parser.add_argument('--file-type', choices=['POSCAR', 'CONTCAR'], default='POSCAR', help='Specify the input file type')
+    parser.add_argument('--fmax', type=float, default=0.05, help='Convergence criterion')
+    parser.add_argument('--steps', type=int, default=200, help='Maximum optimization steps')
     args = parser.parse_args()
 
     logger = setup_logging(args.out_folder)
     start_time = time.time()
     os.makedirs(args.out_folder, exist_ok=True)
 
-    # 搜索所有结构文件
-    all_files = find_structure_files(args.input-folders, args.file_type)
+    # Search for all structure files
+    all_files = find_structure_files(args.input_folders, args.file_type)
     total_files = len(all_files)
-    logger.info(f"共发现 {total_files} 个 {args.file_type} 文件")
+    logger.info(f"Found a total of {total_files} {args.file_type} files")
 
     if total_files == 0:
-        logger.error("未找到任何符合条件的文件")
+        logger.error("No matching files were found")
         return
 
     results = []
     success, failed = 0, 0
 
-    with tqdm(total=total_files, desc="Slab优化中", unit="slab") as pbar:
+    with tqdm(total=total_files, desc="Optimizing slabs", unit="slab") as pbar:
         for file_path in all_files:
             slab_name = file_path.parent.name
             out_dir = Path(args.out_folder) / slab_name
@@ -122,7 +124,7 @@ def main():
                     atoms.calc = calc
                     _ = atoms.get_potential_energy()
                 except Exception as e:
-                    logger.warning(f"CUDA错误，使用CPU: {e}")
+                    logger.warning(f"CUDA error, switching to CPU: {e}")
                     calc = OCPCalculator(checkpoint_path=args.model, cpu=True)
                     atoms.calc = calc
 
@@ -142,10 +144,10 @@ def main():
                     "path": str(out_dir)
                 })
                 success += 1
-                logger.info(f"{slab_name}: ✓收敛 E={energy:.3f}eV 用时{elapsed:.1f}s")
+                logger.info(f"{slab_name}: ✓ Converged, E={energy:.3f} eV, time={elapsed:.1f} s")
             except Exception as e:
                 failed += 1
-                logger.error(f"{slab_name}: 失败 ({e})")
+                logger.error(f"{slab_name}: Failed ({e})")
                 with open(out_dir / "POSCAR_error.txt", "w") as f:
                     f.write(f"Error: {e}\n")
             finally:
@@ -159,13 +161,13 @@ def main():
                 gc.collect()
                 pbar.update(1)
 
-    # 保存结果
+    # Save results
     df = pd.DataFrame(results)
     out_csv = Path(args.out_folder) / f"slab_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
     df.to_csv(out_csv, index=False)
-    logger.info(f"结果已保存: {out_csv}")
+    logger.info(f"Results saved to: {out_csv}")
     total_time = format_time(time.time() - start_time)
-    logger.info(f"✅ 全部完成: 成功 {success}, 失败 {failed}, 总时间 {total_time}")
+    logger.info(f"✅ All tasks completed: success={success}, failed={failed}, total time={total_time}")
 
 if __name__ == "__main__":
     main()
