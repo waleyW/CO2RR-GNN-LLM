@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-遍历父文件夹下所有子文件夹，读取所有 txt 文件中的 JSON 数据，
-仅保留 is_article 和 is_alloy 同时为 True 的记录，
-并添加自增 entry 编号与源文件名，输出为统一 CSV。
+Traverse all subfolders under a parent directory, read JSON data from all txt files,
+retain only records where both is_article and is_alloy are True,
+and output them into a unified CSV with an auto-increment entry ID and source filename.
 """
 
 import json
@@ -11,7 +11,7 @@ import argparse
 import pandas as pd
 from pathlib import Path
 
-# ========== 参数解析 ==========
+# ========== Argument parsing ==========
 parser = argparse.ArgumentParser(
     description="Extract filtered JSON (is_article & is_alloy True) and merge into one CSV."
 )
@@ -20,7 +20,7 @@ parser.add_argument("--out", default="all_data_filtered.csv", help="Output CSV f
 parser.add_argument("--pattern", default="*.txt", help="File pattern to match (default: *.txt)")
 args = parser.parse_args()
 
-# 固定列顺序
+# Fixed column order
 FIXED_KEYS = [
     "is_article",
     "is_alloy",
@@ -53,13 +53,13 @@ def parse_json_line(line):
 
 
 def read_json_file(filepath):
-    """读取一个文件，返回其中的 JSON 对象列表"""
+    """Read a file and return the list of JSON objects contained in it"""
     data_list = []
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             content = f.read().strip()
     except Exception as e:
-        print(f"⚠️ 无法读取文件 {filepath}: {e}")
+        print(f"⚠️ Unable to read file {filepath}: {e}")
         return data_list
 
     try:
@@ -81,7 +81,7 @@ def read_json_file(filepath):
 def collect_all_data(parent_dir, pattern="*.txt"):
     parent_path = Path(parent_dir)
     if not parent_path.exists():
-        raise FileNotFoundError(f"❌ 目录不存在: {parent_dir}")
+        raise FileNotFoundError(f" Directory does not exist: {parent_dir}")
 
     all_data = []
     file_count = 0
@@ -92,24 +92,24 @@ def collect_all_data(parent_dir, pattern="*.txt"):
             data = read_json_file(txt_file)
             if data:
                 for obj in data:
-                    obj["_source_file"] = str(rel_path)  # 🔹 添加来源文件名
+                    obj["_source_file"] = str(rel_path)  # 🔹 Add source filename
                 all_data.extend(data)
                 file_count += 1
-                print(f"📖 {rel_path}: 读取 {len(data)} 条记录")
+                print(f"📖 {rel_path}: read {len(data)} records")
 
-    print(f"\n📊 共读取 {file_count} 个文件，总计 {len(all_data)} 条 JSON 记录。")
+    print(f"\n📊 Total {file_count} files read, {len(all_data)} JSON records in total.")
     return all_data
 
 
 print("=" * 80)
-print("🔍 开始提取并筛选 JSON 数据 ...")
+print("🔍 Start extracting and filtering JSON data ...")
 print("=" * 80)
 
 all_data = collect_all_data(args.parent_dir, args.pattern)
 if not all_data:
-    raise SystemExit(f"❌ 未能从 {args.parent_dir} 中读取任何有效 JSON。")
+    raise SystemExit(f" No valid JSON data could be read from {args.parent_dir}.")
 
-# 提取固定字段 + 来源文件名
+# Extract fixed fields + source filename
 records = []
 for obj in all_data:
     record = {key: obj.get(key, "") for key in FIXED_KEYS}
@@ -118,20 +118,17 @@ for obj in all_data:
 
 df = pd.DataFrame(records, columns=["source_file"] + FIXED_KEYS)
 
-# 转换布尔并筛选
+# Convert boolean values and filter
 df["is_article"] = df["is_article"].astype(str).str.lower().eq("true")
 df["is_alloy"] = df["is_alloy"].astype(str).str.lower().eq("true")
 df_filtered = df[(df["is_article"]) & (df["is_alloy"])].copy()
 
-# 添加 entry 序号
+# Add entry index
 df_filtered.insert(0, "entry", range(1, len(df_filtered) + 1))
 
-# 输出 CSV
+# Export CSV
 df_filtered.to_csv(args.out, index=False, encoding="utf-8-sig")
 
 print("\n" + "=" * 100)
-print(f"✅ 已生成筛选后的表格: {args.out}")
-print(f"📄 共 {len(df_filtered)} 条记录, {len(df_filtered.columns)} 个字段。")
-print("=" * 100)
-print(df_filtered.head(10).to_string(index=False))
-print("\n✨ 完成！")
+print(f" Filtered table generated: {args.out}")
+print(f"📄 {len(df_filtered)} records, {len(df_filtered.columns)} fields.")
